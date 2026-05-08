@@ -6,34 +6,30 @@ import StarterKit from "@tiptap/starter-kit";
 import {
   Bold,
   Code,
-  Download,
   Heading1,
   Heading2,
   Italic,
   List,
   ListOrdered,
-  Quote,
-  SquareStack,
-  Trash2
+  Quote
 } from "lucide-react";
 import type { AppData, Notebook } from "../types/app";
-import { exportAnkiDeck } from "../services/anki";
 
 interface Props {
-  data: AppData;
   activeNotebook: Notebook;
   onData: (data: AppData) => void;
 }
 
-export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
-  const [exportMessage, setExportMessage] = useState("");
-  const [cardsOpen, setCardsOpen] = useState(false);
-  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
+export default function NotebookPanel({ activeNotebook, onData }: Props) {
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(activeNotebook.title);
+  const cancelTitleSaveRef = useRef(false);
   const activeNotebookRef = useRef(activeNotebook);
   const saveTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     activeNotebookRef.current = activeNotebook;
+    setTitleDraft(activeNotebook.title);
   }, [activeNotebook]);
 
   const scheduleSave = useCallback(
@@ -42,7 +38,6 @@ export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
       if (saveTimerRef.current) {
         window.clearTimeout(saveTimerRef.current);
       }
-      setSaveState("saving");
       saveTimerRef.current = window.setTimeout(async () => {
         try {
           onData(
@@ -51,9 +46,8 @@ export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
               content
             })
           );
-          setSaveState("saved");
         } catch {
-          setSaveState("error");
+          // Keep editing responsive; the next change will retry persistence.
         }
       }, 500);
     },
@@ -100,7 +94,6 @@ export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
         emitUpdate: false
       });
     }
-    setSaveState("saved");
   }, [activeNotebook.content, activeNotebook.id, editor]);
 
   useEffect(() => {
@@ -111,28 +104,53 @@ export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
     };
   }, []);
 
-  const exportCards = async () => {
-    const result = await exportAnkiDeck();
-    setExportMessage(result.filePath ? `Exported ${result.cardCount} cards to ${result.filePath}` : "Export cancelled.");
-  };
-
-  const deleteCard = async (id: string) => {
-    onData(await window.speakFirst.deleteFlashcard(id));
+  const saveTitle = async () => {
+    if (cancelTitleSaveRef.current) {
+      cancelTitleSaveRef.current = false;
+      return;
+    }
+    const title = titleDraft.trim() || "Untitled notebook";
+    setTitleDraft(title);
+    setEditingTitle(false);
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    onData(
+      await window.speakFirst.updateNotebook(activeNotebook.id, {
+        title,
+        content: editor?.getMarkdown() ?? activeNotebook.content
+      })
+    );
   };
 
   return (
     <section className="panel notebook-panel">
       <header className="panel-header">
         <div>
-          <span className="eyebrow">Tiptap notebook</span>
-          <h2>{activeNotebook.title}</h2>
-          <p className="muted">{saveState === "error" ? "Notebook changes could not be saved." : saveState === "saving" ? "Saving..." : "Saved"}</p>
-        </div>
-        <div className="panel-actions">
-          <button onClick={() => setCardsOpen(true)}>
-            <SquareStack size={15} />
-            Cards {data.flashcards.length > 0 ? `(${data.flashcards.length})` : ""}
-          </button>
+          {editingTitle ? (
+            <input
+              autoFocus
+              className="notebook-title-input"
+              value={titleDraft}
+              onBlur={() => void saveTitle()}
+              onChange={(event) => setTitleDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.blur();
+                }
+                if (event.key === "Escape") {
+                  cancelTitleSaveRef.current = true;
+                  setTitleDraft(activeNotebook.title);
+                  setEditingTitle(false);
+                }
+              }}
+            />
+          ) : (
+            <button className="notebook-title-button" onClick={() => setEditingTitle(true)} title="Rename notebook" type="button">
+              <h2>{activeNotebook.title}</h2>
+            </button>
+          )}
         </div>
       </header>
 
@@ -165,50 +183,6 @@ export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
         </div>
         <EditorContent editor={editor} className="notebook-editor" />
       </div>
-
-      {cardsOpen && (
-        <div className="modal-backdrop" role="presentation">
-          <section className="modal-card cards-modal" role="dialog" aria-modal="true" aria-label="Flashcards">
-            <header>
-              <div>
-                <span className="eyebrow">Flashcards</span>
-                <h2>{data.flashcards.length} cards</h2>
-              </div>
-              <div className="card-actions">
-                <button onClick={exportCards}>
-                  <Download size={15} />
-                  Export
-                </button>
-                <button className="ghost-button" onClick={() => setCardsOpen(false)}>
-                  Close
-                </button>
-              </div>
-            </header>
-            {exportMessage && <p className="muted">{exportMessage}</p>}
-            <section className="cards-list in-modal">
-              {data.flashcards.length === 0 ? (
-                <p className="muted">No cards yet. Select chat or notebook text and use the Card button.</p>
-              ) : (
-                data.flashcards.map((card) => (
-                  <article key={card.id} className="card-preview">
-                    <div>
-                      <span className="eyebrow">Front</span>
-                      <p>{card.front}</p>
-                    </div>
-                    <div>
-                      <span className="eyebrow">Back</span>
-                      <p>{card.back}</p>
-                    </div>
-                    <button className="danger-button" onClick={() => deleteCard(card.id)} title="Delete card">
-                      <Trash2 size={14} />
-                    </button>
-                  </article>
-                ))
-              )}
-            </section>
-          </section>
-        </div>
-      )}
     </section>
   );
 }

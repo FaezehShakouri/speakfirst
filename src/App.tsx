@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { Brain, Camera, Moon, PanelLeft, Pin, Settings, Sun } from "lucide-react";
+import { Brain, Camera, Download, Moon, PanelLeft, Pin, Settings, SquareStack, Sun, Trash2 } from "lucide-react";
 import ChatPanel from "./components/ChatPanel";
 import NotebookPanel from "./components/NotebookPanel";
 import ThreadMap from "./components/ThreadMap";
 import SettingsPanel from "./components/SettingsPanel";
 import type { AppData, AppSettings, Attachment } from "./types/app";
+import { exportAnkiDeck } from "./services/anki";
 import { loadData, saveSettings } from "./services/storage";
 
 export default function App() {
   const [data, setData] = useState<AppData | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [cardsOpen, setCardsOpen] = useState(false);
+  const [exportMessage, setExportMessage] = useState("");
   const [mapOpen, setMapOpen] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -98,6 +101,15 @@ export default function App() {
     }
   };
 
+  const exportCards = async () => {
+    const result = await exportAnkiDeck();
+    setExportMessage(result.filePath ? `Exported ${result.cardCount} cards to ${result.filePath}` : "Export cancelled.");
+  };
+
+  const deleteCard = async (id: string) => {
+    setData(await window.speakFirst.deleteFlashcard(id));
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -115,6 +127,10 @@ export default function App() {
           </button>
           <button className="icon-button" onClick={captureToChat} disabled={busy} title="Capture screen area">
             <Camera size={18} />
+          </button>
+          <button className="icon-button" onClick={() => setCardsOpen(true)} title="Open flashcards">
+            <SquareStack size={18} />
+            <span>Cards {data.flashcards.length > 0 ? `(${data.flashcards.length})` : ""}</span>
           </button>
           <button className={data.settings.alwaysOnTop ? "icon-button active" : "icon-button"} onClick={toggleAlwaysOnTop}>
             <Pin size={18} />
@@ -134,8 +150,52 @@ export default function App() {
       <section className={mapOpen ? "workspace with-map" : "workspace"}>
         {mapOpen && <ThreadMap data={data} onData={setData} />}
         <ChatPanel data={data} activeThread={activeThread} activeNotebook={activeNotebook} onData={setData} />
-        <NotebookPanel data={data} activeNotebook={activeNotebook} onData={setData} />
+        <NotebookPanel activeNotebook={activeNotebook} onData={setData} />
       </section>
+
+      {cardsOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="modal-card cards-modal" role="dialog" aria-modal="true" aria-label="Flashcards">
+            <header>
+              <div>
+                <span className="eyebrow">Flashcards</span>
+                <h2>{data.flashcards.length} cards</h2>
+              </div>
+              <div className="card-actions">
+                <button onClick={exportCards}>
+                  <Download size={15} />
+                  Export
+                </button>
+                <button className="ghost-button" onClick={() => setCardsOpen(false)}>
+                  Close
+                </button>
+              </div>
+            </header>
+            {exportMessage && <p className="muted">{exportMessage}</p>}
+            <section className="cards-list in-modal">
+              {data.flashcards.length === 0 ? (
+                <p className="muted">No cards yet. Select chat or notebook text and use the Card button.</p>
+              ) : (
+                data.flashcards.map((card) => (
+                  <article key={card.id} className="card-preview">
+                    <div>
+                      <span className="eyebrow">Front</span>
+                      <p>{card.front}</p>
+                    </div>
+                    <div>
+                      <span className="eyebrow">Back</span>
+                      <p>{card.back}</p>
+                    </div>
+                    <button className="danger-button" onClick={() => deleteCard(card.id)} title="Delete card">
+                      <Trash2 size={14} />
+                    </button>
+                  </article>
+                ))
+              )}
+            </section>
+          </section>
+        </div>
+      )}
 
       {settingsOpen && (
         <SettingsPanel
