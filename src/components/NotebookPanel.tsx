@@ -1,5 +1,21 @@
-import { useEffect, useState } from "react";
-import { Download, ExternalLink, Loader2, RefreshCw, SquareStack, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import Placeholder from "@tiptap/extension-placeholder";
+import { Markdown } from "@tiptap/markdown";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import {
+  Bold,
+  Code,
+  Download,
+  Heading1,
+  Heading2,
+  Italic,
+  List,
+  ListOrdered,
+  Quote,
+  SquareStack,
+  Trash2
+} from "lucide-react";
 import type { AppData, Notebook } from "../types/app";
 import { exportAnkiDeck } from "../services/anki";
 
@@ -12,38 +28,88 @@ interface Props {
 export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
   const [exportMessage, setExportMessage] = useState("");
   const [cardsOpen, setCardsOpen] = useState(false);
-  const [srcbookUrl, setSrcbookUrl] = useState("");
-  const [srcbookStatus, setSrcbookStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [srcbookError, setSrcbookError] = useState("");
+  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
+  const activeNotebookRef = useRef(activeNotebook);
+  const saveTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    void startSrcbook();
+    activeNotebookRef.current = activeNotebook;
+  }, [activeNotebook]);
+
+  const scheduleSave = useCallback(
+    (content: string) => {
+      const notebook = activeNotebookRef.current;
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+      }
+      setSaveState("saving");
+      saveTimerRef.current = window.setTimeout(async () => {
+        try {
+          onData(
+            await window.speakFirst.updateNotebook(notebook.id, {
+              title: notebook.title,
+              content
+            })
+          );
+          setSaveState("saved");
+        } catch {
+          setSaveState("error");
+        }
+      }, 500);
+    },
+    [onData]
+  );
+
+  const editor = useEditor(
+    {
+      extensions: [
+        StarterKit,
+        Markdown.configure({
+          markedOptions: {
+            gfm: true,
+            breaks: false
+          }
+        }),
+        Placeholder.configure({
+          placeholder: "Collect phrases, grammar notes, questions, and corrections here..."
+        })
+      ],
+      content: activeNotebook.content,
+      contentType: "markdown",
+      editorProps: {
+        attributes: {
+          class: "tiptap-editor"
+        }
+      },
+      shouldRerenderOnTransaction: true,
+      onUpdate: ({ editor: currentEditor }) => {
+        scheduleSave(currentEditor.getMarkdown());
+      }
+    },
+    [scheduleSave]
+  );
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+    const currentMarkdown = editor.getMarkdown();
+    if (currentMarkdown !== activeNotebook.content) {
+      editor.commands.setContent(activeNotebook.content, {
+        contentType: "markdown",
+        emitUpdate: false
+      });
+    }
+    setSaveState("saved");
+  }, [activeNotebook.content, activeNotebook.id, editor]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+      }
+    };
   }, []);
-
-  const startSrcbook = async () => {
-    setSrcbookStatus("loading");
-    setSrcbookError("");
-    try {
-      const result = await window.speakFirst.startSrcbookNotebook();
-      setSrcbookUrl(result.url);
-      setSrcbookStatus("ready");
-    } catch (error) {
-      setSrcbookStatus("error");
-      setSrcbookError(error instanceof Error ? error.message : "Unable to start Srcbook.");
-    }
-  };
-
-  const openSrcbook = async () => {
-    setSrcbookError("");
-    try {
-      const result = await window.speakFirst.openSrcbookNotebook();
-      setSrcbookUrl(result.url);
-      setSrcbookStatus("ready");
-    } catch (error) {
-      setSrcbookStatus("error");
-      setSrcbookError(error instanceof Error ? error.message : "Unable to open Srcbook.");
-    }
-  };
 
   const exportCards = async () => {
     const result = await exportAnkiDeck();
@@ -58,19 +124,11 @@ export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
     <section className="panel notebook-panel">
       <header className="panel-header">
         <div>
-          <span className="eyebrow">Srcbook notebook</span>
+          <span className="eyebrow">Tiptap notebook</span>
           <h2>{activeNotebook.title}</h2>
-          <p className="muted">Notebook editing is handled by Srcbook.</p>
+          <p className="muted">{saveState === "error" ? "Notebook changes could not be saved." : saveState === "saving" ? "Saving..." : "Saved"}</p>
         </div>
         <div className="panel-actions">
-          <button onClick={() => void startSrcbook()}>
-            <RefreshCw size={15} />
-            Restart
-          </button>
-          <button onClick={() => void openSrcbook()}>
-            <ExternalLink size={15} />
-            Open
-          </button>
           <button onClick={() => setCardsOpen(true)}>
             <SquareStack size={15} />
             Cards {data.flashcards.length > 0 ? `(${data.flashcards.length})` : ""}
@@ -78,22 +136,34 @@ export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
         </div>
       </header>
 
-      <div className="srcbook-shell">
-        {srcbookStatus === "loading" && (
-          <div className="empty-state">
-            <Loader2 className="spin" size={28} />
-            <strong>Starting Srcbook...</strong>
-            <span>SpeakFirst will use Srcbook for the notebook workspace.</span>
-          </div>
-        )}
-        {srcbookStatus === "error" && (
-          <div className="empty-state">
-            <strong>Srcbook could not start.</strong>
-            <span>{srcbookError}</span>
-            <button onClick={() => void startSrcbook()}>Try again</button>
-          </div>
-        )}
-        {srcbookStatus === "ready" && srcbookUrl && <iframe className="srcbook-frame" src={srcbookUrl} title="Srcbook notebook" />}
+      <div className="notebook-editor-shell">
+        <div className="notebook-toolbar" aria-label="Notebook formatting tools">
+          <ToolbarButton active={editor?.isActive("heading", { level: 1 })} disabled={!editor} onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} label="Heading 1">
+            <Heading1 size={15} />
+          </ToolbarButton>
+          <ToolbarButton active={editor?.isActive("heading", { level: 2 })} disabled={!editor} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} label="Heading 2">
+            <Heading2 size={15} />
+          </ToolbarButton>
+          <ToolbarButton active={editor?.isActive("bold")} disabled={!editor} onClick={() => editor?.chain().focus().toggleBold().run()} label="Bold">
+            <Bold size={15} />
+          </ToolbarButton>
+          <ToolbarButton active={editor?.isActive("italic")} disabled={!editor} onClick={() => editor?.chain().focus().toggleItalic().run()} label="Italic">
+            <Italic size={15} />
+          </ToolbarButton>
+          <ToolbarButton active={editor?.isActive("bulletList")} disabled={!editor} onClick={() => editor?.chain().focus().toggleBulletList().run()} label="Bullet list">
+            <List size={15} />
+          </ToolbarButton>
+          <ToolbarButton active={editor?.isActive("orderedList")} disabled={!editor} onClick={() => editor?.chain().focus().toggleOrderedList().run()} label="Ordered list">
+            <ListOrdered size={15} />
+          </ToolbarButton>
+          <ToolbarButton active={editor?.isActive("blockquote")} disabled={!editor} onClick={() => editor?.chain().focus().toggleBlockquote().run()} label="Quote">
+            <Quote size={15} />
+          </ToolbarButton>
+          <ToolbarButton active={editor?.isActive("codeBlock")} disabled={!editor} onClick={() => editor?.chain().focus().toggleCodeBlock().run()} label="Code block">
+            <Code size={15} />
+          </ToolbarButton>
+        </div>
+        <EditorContent editor={editor} className="notebook-editor" />
       </div>
 
       {cardsOpen && (
@@ -140,5 +210,25 @@ export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
         </div>
       )}
     </section>
+  );
+}
+
+function ToolbarButton({
+  active,
+  children,
+  disabled,
+  label,
+  onClick
+}: {
+  active?: boolean;
+  children: ReactNode;
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button className={active ? "active" : ""} disabled={disabled} onClick={onClick} title={label} type="button">
+      {children}
+    </button>
   );
 }

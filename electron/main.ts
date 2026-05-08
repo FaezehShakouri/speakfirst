@@ -1,7 +1,6 @@
-import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, nativeImage, screen, type Event } from "electron";
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, screen, type Event } from "electron";
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import { spawn, type ChildProcess } from "node:child_process";
 import type { AppData, AppSettings, SendChatInput } from "../src/types/app";
 import { completeChat, listModels } from "./ai";
 import {
@@ -19,13 +18,9 @@ const store = new Store();
 let mainWindow: BrowserWindow | null = null;
 let captureWindow: BrowserWindow | null = null;
 let bubbleWindow: BrowserWindow | null = null;
-let srcbookWindow: BrowserWindow | null = null;
-let srcbookProcess: ChildProcess | null = null;
 let pendingCaptureResolve: ((value: { dataUrl: string; width: number; height: number } | null) => void) | null = null;
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
-const srcbookPort = 2150;
-const srcbookUrl = `http://localhost:${srcbookPort}`;
 
 async function createMainWindow() {
   const data = await store.load();
@@ -86,7 +81,6 @@ app.on("window-all-closed", () => {
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
-  srcbookProcess?.kill();
 });
 
 function registerShortcuts() {
@@ -306,32 +300,6 @@ ipcMain.handle("set-always-on-top", async (_event, value: boolean) => {
 
 ipcMain.handle("capture-region", () => captureRegion());
 
-ipcMain.handle("start-srcbook-notebook", async () => {
-  await ensureSrcbookServer();
-  return { url: srcbookUrl };
-});
-
-ipcMain.handle("open-srcbook-notebook", async () => {
-  await ensureSrcbookServer();
-  if (!srcbookWindow) {
-    srcbookWindow = new BrowserWindow({
-      width: 1280,
-      height: 820,
-      minWidth: 960,
-      minHeight: 640,
-      title: "Srcbook",
-      backgroundColor: "#10131a"
-    });
-    srcbookWindow.on("closed", () => {
-      srcbookWindow = null;
-    });
-  }
-  await srcbookWindow.loadURL(srcbookUrl);
-  srcbookWindow.show();
-  srcbookWindow.focus();
-  return { url: srcbookUrl };
-});
-
 ipcMain.handle("export-anki-deck", async () => {
   const data = await store.load();
   const cardCount = data.flashcards.length;
@@ -407,52 +375,6 @@ async function captureRegion(): Promise<{ dataUrl: string; width: number; height
       captureWindow = null;
     });
   });
-}
-
-async function ensureSrcbookServer(): Promise<void> {
-  if (await isSrcbookAvailable()) {
-    return;
-  }
-  if (!srcbookProcess || srcbookProcess.exitCode !== null) {
-    srcbookProcess = spawn(resolveSrcbookCommand(), ["start", "--port", String(srcbookPort)], {
-      cwd: app.getPath("userData"),
-      env: {
-        ...process.env,
-        SRCBOOK_DISABLE_ANALYTICS: "true"
-      },
-      stdio: "ignore",
-      shell: process.platform === "win32"
-    });
-    srcbookProcess.once("exit", () => {
-      srcbookProcess = null;
-    });
-    srcbookProcess.once("error", () => {
-      srcbookProcess = null;
-    });
-  }
-
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    if (await isSrcbookAvailable()) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 400));
-  }
-  throw new Error("Srcbook did not start on port 2150.");
-}
-
-function resolveSrcbookCommand() {
-  const binName = process.platform === "win32" ? "srcbook.cmd" : "srcbook";
-  return path.join(app.getAppPath(), "node_modules", ".bin", binName);
-}
-
-async function isSrcbookAvailable() {
-  try {
-    const response = await fetch(srcbookUrl);
-    return response.ok;
-  } catch {
-    return false;
-  }
 }
 
 function buildCaptureHtml(screenshot: string) {
