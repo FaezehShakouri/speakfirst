@@ -136,7 +136,7 @@ export const createThread = (input: CreateThreadInput): ChatThread => {
   return {
     id: id(),
     parentId: input.parentId,
-    title: input.title || "Follow-up thread",
+    title: input.title || "Follow-up",
     selectedQuote: input.selectedQuote,
     sourceMessageId: input.sourceMessageId,
     createdAt,

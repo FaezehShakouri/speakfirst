@@ -1,10 +1,17 @@
-import { FormEvent, useMemo, useState } from "react";
+import { useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CornerDownRight, Image, Loader2, MessageSquarePlus, NotebookPen, Send, SquareStack } from "lucide-react";
 import type { AppData, ChatMessage, ChatThread, Notebook } from "../types/app";
 import { sendChatMessage } from "../services/aiProvider";
 import { createFlashcard } from "../services/anki";
+
+interface SelectionAction {
+  text: string;
+  x: number;
+  y: number;
+  messageId?: string;
+}
 
 interface Props {
   data: AppData;
@@ -16,11 +23,13 @@ interface Props {
 export default function ChatPanel({ data, activeThread, activeNotebook, onData }: Props) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [selectedText, setSelectedText] = useState("");
+  const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
 
   const messages = data.messages.filter((message) => message.threadId === activeThread.id);
   const usedAttachmentIds = new Set(data.messages.flatMap((message) => message.attachmentIds));
   const pendingAttachments = data.attachments.filter((attachment) => !usedAttachmentIds.has(attachment.id));
+  const selectedText = selectionAction?.text ?? "";
 
   const breadcrumb = useMemo(() => {
     const path: ChatThread[] = [];
@@ -56,25 +65,41 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
     }
   };
 
-  const handleSelection = () => {
-    const text = window.getSelection()?.toString().trim() ?? "";
-    if (text) {
-      setSelectedText(text);
+  const handleSelection = (event: MouseEvent<HTMLDivElement>) => {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim() ?? "";
+    if (!selection || !text || selection.rangeCount === 0 || !panelRef.current) {
+      setSelectionAction(null);
+      return;
     }
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const panelRect = panelRef.current.getBoundingClientRect();
+    const anchorElement = selection.anchorNode instanceof Element ? selection.anchorNode : selection.anchorNode?.parentElement;
+    const messageElement = anchorElement && event.currentTarget.contains(anchorElement) ? anchorElement.closest("[data-message-id]") : null;
+    setSelectionAction({
+      text,
+      x: rect.right - panelRect.left + 8,
+      y: rect.top - panelRect.top - 6,
+      messageId: messageElement instanceof HTMLElement ? messageElement.dataset.messageId : undefined
+    });
   };
 
-  const askAboutSelection = async (message?: ChatMessage) => {
-    const quote = selectedText || message?.content.slice(0, 240) || "";
-    const title = quote ? `About: ${quote.slice(0, 42)}` : "Follow-up thread";
+  const askAboutSelection = async () => {
+    const quote = selectionAction?.text ?? "";
+    if (!quote) {
+      return;
+    }
+    const title = quote ? shortTitle(quote) : "Follow-up";
     onData(
       await window.speakFirst.createThread({
         parentId: activeThread.id,
         title,
         selectedQuote: quote,
-        sourceMessageId: message?.id
+        sourceMessageId: selectionAction?.messageId
       })
     );
-    setSelectedText("");
+    setSelectionAction(null);
   };
 
   const addSelectionToNotebook = async () => {
@@ -88,7 +113,7 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
         content: `${activeNotebook.content}\n\n> ${quote.replace(/\n/g, "\n> ")}`
       })
     );
-    setSelectedText("");
+    setSelectionAction(null);
   };
 
   const makeFlashcard = async () => {
@@ -104,20 +129,20 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
         sourceId: activeThread.id
       })
     );
-    setSelectedText("");
+    setSelectionAction(null);
   };
 
   return (
-    <section className="panel chat-panel">
+    <section ref={panelRef} className="panel chat-panel">
       <header className="panel-header">
         <div>
           <span className="eyebrow">AI chat</span>
-          <h2>{activeThread.title}</h2>
+          <h2 title={activeThread.title}>{shortTitle(activeThread.title)}</h2>
           <div className="breadcrumb">
             {breadcrumb.map((thread, index) => (
-              <span key={thread.id}>
+              <span key={thread.id} title={thread.title}>
                 {index > 0 && " / "}
-                {thread.title}
+                {shortTitle(thread.title)}
               </span>
             ))}
           </div>
@@ -140,7 +165,7 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
           </div>
         )}
         {messages.map((message) => (
-          <article key={message.id} className={`message ${message.role}`}>
+          <article key={message.id} className={`message ${message.role}`} data-message-id={message.id}>
             <div className="message-meta">{message.role === "assistant" ? "Tutor" : "You"}</div>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
             {message.attachmentIds.map((attachmentId) => {
@@ -149,10 +174,6 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
             })}
             {message.role === "assistant" && (
               <div className="message-actions">
-                <button onClick={() => askAboutSelection(message)}>
-                  <MessageSquarePlus size={14} />
-                  Ask about selection
-                </button>
                 <button onClick={addSelectionToNotebook}>
                   <NotebookPen size={14} />
                   Add to notebook
@@ -166,6 +187,20 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
           </article>
         ))}
       </div>
+
+      {selectionAction && (
+        <button
+          className="selection-reply-button"
+          style={{ left: selectionAction.x, top: selectionAction.y }}
+          onClick={() => void askAboutSelection()}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Reply to selection"
+          type="button"
+        >
+          <MessageSquarePlus size={14} />
+          Reply
+        </button>
+      )}
 
       {pendingAttachments.length > 0 && (
         <div className="pending-attachments">
@@ -182,6 +217,12 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
         <textarea
           value={input}
           onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
           placeholder="Ask your tutor. Try: explain this sentence, make examples, correct my note..."
         />
         <button className="primary-button" disabled={busy || (!input.trim() && pendingAttachments.length === 0)}>
@@ -191,4 +232,9 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
       </form>
     </section>
   );
+}
+
+function shortTitle(value: string): string {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  return cleaned.length > 18 ? `${cleaned.slice(0, 17)}…` : cleaned;
 }
