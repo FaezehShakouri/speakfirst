@@ -1,17 +1,28 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
+import { Table } from "@tiptap/extension-table";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import TableRow from "@tiptap/extension-table-row";
 import { Markdown } from "@tiptap/markdown";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
   Bold,
   Code,
-  Heading1,
-  Heading2,
+  Heading,
+  Image as ImageIcon,
   Italic,
   List,
   ListOrdered,
-  Quote
+  MessageCircle,
+  Minus,
+  Quote,
+  Redo2,
+  Strikethrough,
+  Table2,
+  Undo2
 } from "lucide-react";
 import type { AppData, Notebook } from "../types/app";
 
@@ -25,6 +36,7 @@ export default function NotebookPanel({ activeNotebook, onData }: Props) {
   const [titleDraft, setTitleDraft] = useState(activeNotebook.title);
   const cancelTitleSaveRef = useRef(false);
   const activeNotebookRef = useRef(activeNotebook);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const saveTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -58,6 +70,15 @@ export default function NotebookPanel({ activeNotebook, onData }: Props) {
     {
       extensions: [
         StarterKit,
+        Image.configure({
+          allowBase64: true
+        }),
+        Table.configure({
+          resizable: true
+        }),
+        TableRow,
+        TableHeader,
+        TableCell,
         Markdown.configure({
           markedOptions: {
             gfm: true,
@@ -124,6 +145,28 @@ export default function NotebookPanel({ activeNotebook, onData }: Props) {
     );
   };
 
+  const addImage = () => {
+    imageInputRef.current?.click();
+  };
+
+  const insertImageFile = (file: File | undefined) => {
+    if (!file || !editor) {
+      return;
+    }
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      const src = reader.result;
+      if (typeof src === "string") {
+        editor.chain().focus().setImage({ src, alt: file.name }).run();
+      }
+    });
+    reader.readAsDataURL(file);
+  };
+
+  const addNote = () => {
+    editor?.chain().focus().insertContent("<blockquote><p>Note: </p></blockquote>").run();
+  };
+
   return (
     <section className="panel notebook-panel">
       <header className="panel-header">
@@ -156,29 +199,61 @@ export default function NotebookPanel({ activeNotebook, onData }: Props) {
 
       <div className="notebook-editor-shell">
         <div className="notebook-toolbar" aria-label="Notebook formatting tools">
-          <ToolbarButton active={editor?.isActive("heading", { level: 1 })} disabled={!editor} onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} label="Heading 1">
-            <Heading1 size={15} />
+          <ToolbarButton disabled={!editor?.can().undo()} onClick={() => editor?.chain().focus().undo().run()} label="Undo">
+            <Undo2 size={15} />
           </ToolbarButton>
-          <ToolbarButton active={editor?.isActive("heading", { level: 2 })} disabled={!editor} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} label="Heading 2">
-            <Heading2 size={15} />
+          <ToolbarButton disabled={!editor?.can().redo()} onClick={() => editor?.chain().focus().redo().run()} label="Redo">
+            <Redo2 size={15} />
           </ToolbarButton>
+          <ToolbarSeparator />
           <ToolbarButton active={editor?.isActive("bold")} disabled={!editor} onClick={() => editor?.chain().focus().toggleBold().run()} label="Bold">
             <Bold size={15} />
           </ToolbarButton>
           <ToolbarButton active={editor?.isActive("italic")} disabled={!editor} onClick={() => editor?.chain().focus().toggleItalic().run()} label="Italic">
             <Italic size={15} />
           </ToolbarButton>
+          <ToolbarButton active={editor?.isActive("strike")} disabled={!editor} onClick={() => editor?.chain().focus().toggleStrike().run()} label="Strikethrough">
+            <Strikethrough size={15} />
+          </ToolbarButton>
+          <ToolbarButton active={editor?.isActive("heading", { level: 2 })} disabled={!editor} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} label="Heading">
+            <Heading size={15} />
+          </ToolbarButton>
+          <ToolbarSeparator />
+          <ToolbarButton active={editor?.isActive("codeBlock")} disabled={!editor} onClick={() => editor?.chain().focus().toggleCodeBlock().run()} label="Code block">
+            <Code size={15} />
+          </ToolbarButton>
+          <ToolbarButton active={editor?.isActive("blockquote")} disabled={!editor} onClick={() => editor?.chain().focus().toggleBlockquote().run()} label="Quote">
+            <Quote size={15} />
+          </ToolbarButton>
+          <ToolbarSeparator />
           <ToolbarButton active={editor?.isActive("bulletList")} disabled={!editor} onClick={() => editor?.chain().focus().toggleBulletList().run()} label="Bullet list">
             <List size={15} />
           </ToolbarButton>
           <ToolbarButton active={editor?.isActive("orderedList")} disabled={!editor} onClick={() => editor?.chain().focus().toggleOrderedList().run()} label="Ordered list">
             <ListOrdered size={15} />
           </ToolbarButton>
-          <ToolbarButton active={editor?.isActive("blockquote")} disabled={!editor} onClick={() => editor?.chain().focus().toggleBlockquote().run()} label="Quote">
-            <Quote size={15} />
+          <ToolbarSeparator />
+          <ToolbarButton disabled={!editor} onClick={addImage} label="Image">
+            <ImageIcon size={15} />
           </ToolbarButton>
-          <ToolbarButton active={editor?.isActive("codeBlock")} disabled={!editor} onClick={() => editor?.chain().focus().toggleCodeBlock().run()} label="Code block">
-            <Code size={15} />
+          <input
+            ref={imageInputRef}
+            accept="image/*"
+            className="visually-hidden"
+            type="file"
+            onChange={(event) => {
+              insertImageFile(event.target.files?.[0]);
+              event.target.value = "";
+            }}
+          />
+          <ToolbarButton active={editor?.isActive("table")} disabled={!editor} onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} label="Table">
+            <Table2 size={15} />
+          </ToolbarButton>
+          <ToolbarButton disabled={!editor} onClick={() => editor?.chain().focus().setHorizontalRule().run()} label="Divider">
+            <Minus size={15} />
+          </ToolbarButton>
+          <ToolbarButton disabled={!editor} onClick={addNote} label="Note">
+            <MessageCircle size={15} />
           </ToolbarButton>
         </div>
         <EditorContent editor={editor} className="notebook-editor" />
@@ -201,8 +276,20 @@ function ToolbarButton({
   onClick: () => void;
 }) {
   return (
-    <button className={active ? "active" : ""} disabled={disabled} onClick={onClick} title={label} type="button">
+    <button
+      className={active ? "active" : ""}
+      disabled={disabled}
+      onClick={onClick}
+      onMouseDown={(event) => event.preventDefault()}
+      title={label}
+      type="button"
+    >
       {children}
     </button>
   );
 }
+
+function ToolbarSeparator() {
+  return <span className="notebook-toolbar-separator" aria-hidden="true" />;
+}
+
