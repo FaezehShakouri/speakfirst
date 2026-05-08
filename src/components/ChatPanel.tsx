@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CornerDownRight, Image, Loader2, MessageSquarePlus, NotebookPen, Send, SquareStack } from "lucide-react";
@@ -25,6 +25,7 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
   const [busy, setBusy] = useState(false);
   const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
 
   const messages = data.messages.filter((message) => message.threadId === activeThread.id);
   const usedAttachmentIds = new Set(data.messages.flatMap((message) => message.attachmentIds));
@@ -44,6 +45,29 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
     }
     return path;
   }, [activeThread.id, data.threads]);
+
+  useEffect(() => {
+    const container = messageListRef.current;
+    if (!container) {
+      return;
+    }
+    if (activeThread.parentId === null) {
+      container.scrollTop = container.scrollHeight;
+      return;
+    }
+    container.scrollTop = 0;
+  }, [activeThread.id, activeThread.parentId]);
+
+  useEffect(() => {
+    if (activeThread.parentId !== null) {
+      return;
+    }
+    const container = messageListRef.current;
+    if (!container) {
+      return;
+    }
+    container.scrollTop = container.scrollHeight;
+  }, [activeThread.parentId, messages.length]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -160,7 +184,7 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
         </blockquote>
       )}
 
-      <div className="message-list" onMouseUp={handleSelection}>
+      <div ref={messageListRef} className="message-list" onMouseUp={handleSelection}>
         {messages.length === 0 && (
           <div className="empty-state">
             <MessageSquarePlus size={28} />
@@ -175,7 +199,7 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
               remarkPlugins={[remarkGfm]}
               components={{
                 a: ({ href, children }) => {
-                  const threadId = href?.startsWith("#thread:") ? href.replace("#thread:", "") : "";
+                  const threadId = extractThreadIdFromHref(href);
                   if (threadId) {
                     return (
                       <button
@@ -309,4 +333,15 @@ function escapeMarkdownLinkText(value: string): string {
 function shortTitle(value: string): string {
   const cleaned = value.replace(/\s+/g, " ").trim();
   return cleaned.length > 18 ? `${cleaned.slice(0, 17)}…` : cleaned;
+}
+
+function extractThreadIdFromHref(href?: string): string {
+  if (!href) {
+    return "";
+  }
+  const hashIndex = href.indexOf("#thread:");
+  if (hashIndex === -1) {
+    return "";
+  }
+  return href.slice(hashIndex + "#thread:".length);
 }
