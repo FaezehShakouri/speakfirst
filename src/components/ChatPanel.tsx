@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CornerDownRight, Image, Loader2, MessageSquarePlus, NotebookPen, Send, SquareStack } from "lucide-react";
@@ -26,25 +26,12 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
   const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const messages = data.messages.filter((message) => message.threadId === activeThread.id);
   const usedAttachmentIds = new Set(data.messages.flatMap((message) => message.attachmentIds));
   const pendingAttachments = data.attachments.filter((attachment) => !usedAttachmentIds.has(attachment.id));
   const selectedText = selectionAction?.text ?? "";
-
-  const breadcrumb = useMemo(() => {
-    const path: ChatThread[] = [];
-    let cursor: string | null = activeThread.id;
-    while (cursor) {
-      const thread = data.threads.find((item) => item.id === cursor);
-      if (!thread) {
-        break;
-      }
-      path.unshift(thread);
-      cursor = thread.parentId;
-    }
-    return path;
-  }, [activeThread.id, data.threads]);
 
   useEffect(() => {
     const container = messageListRef.current;
@@ -68,6 +55,16 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
     }
     container.scrollTop = container.scrollHeight;
   }, [activeThread.parentId, messages.length]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+    textarea.style.height = "0px";
+    const nextHeight = Math.min(Math.max(textarea.scrollHeight, 72), 220);
+    textarea.style.height = `${nextHeight}px`;
+  }, [input]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -164,16 +161,7 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
     <section ref={panelRef} className="panel chat-panel">
       <header className="panel-header">
         <div>
-          <span className="eyebrow">AI chat</span>
           <h2 title={activeThread.title}>{shortTitle(activeThread.title)}</h2>
-          <div className="breadcrumb">
-            {breadcrumb.map((thread, index) => (
-              <span key={thread.id} title={thread.title}>
-                {index > 0 && " / "}
-                {shortTitle(thread.title)}
-              </span>
-            ))}
-          </div>
         </div>
       </header>
 
@@ -189,7 +177,6 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
           <div className="empty-state">
             <MessageSquarePlus size={28} />
             <strong>Ask anything about the language you are learning.</strong>
-            <span>The active notebook is included as context for your tutor.</span>
           </div>
         )}
         {messages.map((message) => (
@@ -272,6 +259,7 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
 
       <form className="composer" onSubmit={submit}>
         <textarea
+          ref={textareaRef}
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
@@ -282,9 +270,8 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
           }}
           placeholder="Ask your tutor. Try: explain this sentence, make examples, correct my note..."
         />
-        <button className="primary-button" disabled={busy || (!input.trim() && pendingAttachments.length === 0)}>
+        <button className="primary-button send-button" aria-label="Send message" disabled={busy || (!input.trim() && pendingAttachments.length === 0)}>
           {busy ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
-          Send
         </button>
       </form>
     </section>

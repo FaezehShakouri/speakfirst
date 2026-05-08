@@ -11,7 +11,7 @@ export default function ThreadMap({ data, onData }: Props) {
     onData(
       await window.speakFirst.createThread({
         parentId: null,
-        title: "New chat"
+        title: "New conversation"
       })
     );
   };

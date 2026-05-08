@@ -499,7 +499,8 @@ button:disabled {
   padding: 14px 16px 16px;
   border-top: 1px solid var(--border);
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
   gap: 10px;
 }
 
@@ -514,10 +515,26 @@ select {
 }
 
 .composer textarea {
-  min-height: 52px;
-  max-height: 120px;
-  resize: vertical;
-  padding: 12px;
+  min-height: 72px;
+  max-height: 220px;
+  overflow-y: auto;
+  resize: none;
+  width: 100%;
+  padding: 14px 16px;
+}
+
+.composer .primary-button {
+  align-self: end;
+}
+
+.composer .send-button {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 999px;
+  padding: 0;
+  display: grid;
+  place-items: center;
 }
 
 .notebook-editor-shell {
