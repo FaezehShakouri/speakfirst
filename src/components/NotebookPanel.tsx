@@ -170,7 +170,7 @@ export default function NotebookPanel({ activeNotebook, onData }: Props) {
   return (
     <section className="panel notebook-panel">
       <header className="panel-header">
-        <div>
+        <div className="notebook-title-wrap">
           {editingTitle ? (
             <input
               autoFocus

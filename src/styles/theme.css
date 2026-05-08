@@ -216,6 +216,10 @@ button:disabled {
   gap: 16px;
 }
 
+.notebook-panel .panel-header {
+  justify-content: center;
+}
+
 .panel-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -228,12 +232,18 @@ button:disabled {
   font-size: 18px;
 }
 
+.notebook-title-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
 .notebook-title-button {
   border: 0;
   padding: 0;
   min-height: 0;
   background: transparent;
-  text-align: left;
+  text-align: center;
 }
 
 .notebook-title-button:hover h2 {
@@ -246,6 +256,7 @@ button:disabled {
   padding: 6px 10px;
   font-size: 18px;
   font-weight: 700;
+  text-align: center;
 }
 
 .eyebrow {
