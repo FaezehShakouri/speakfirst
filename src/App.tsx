@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Brain, Camera, Download, Moon, PanelLeft, Pin, Settings, SquareStack, Sun, Trash2 } from "lucide-react";
 import ChatPanel from "./components/ChatPanel";
 import NotebookPanel from "./components/NotebookPanel";
@@ -8,6 +8,10 @@ import type { AppData, AppSettings, Attachment } from "./types/app";
 import { exportAnkiDeck } from "./services/anki";
 import { loadData, saveSettings } from "./services/storage";
 
+const RESIZE_HANDLE_WIDTH = 12;
+const MIN_MAP_WIDTH = 180;
+const MIN_PANEL_WIDTH = 320;
+
 export default function App() {
   const [data, setData] = useState<AppData | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -15,6 +19,9 @@ export default function App() {
   const [exportMessage, setExportMessage] = useState("");
   const [mapOpen, setMapOpen] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [mapWidth, setMapWidth] = useState(240);
+  const [chatWidth, setChatWidth] = useState(520);
+  const workspaceRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     loadData().then(setData);
@@ -110,6 +117,45 @@ export default function App() {
     setData(await window.speakFirst.deleteFlashcard(id));
   };
 
+  const startResize = (target: "map" | "chat") => (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    document.body.classList.add("resizing-panes");
+
+    const resize = (moveEvent: PointerEvent) => {
+      const rect = workspaceRef.current?.getBoundingClientRect();
+      if (!rect) {
+        return;
+      }
+
+      if (target === "map") {
+        const maxMapWidth = rect.width - MIN_PANEL_WIDTH * 2 - RESIZE_HANDLE_WIDTH * 2;
+        const nextMapWidth = clamp(moveEvent.clientX - rect.left, MIN_MAP_WIDTH, maxMapWidth);
+        setMapWidth(nextMapWidth);
+        setChatWidth((width) => clamp(width, MIN_PANEL_WIDTH, rect.width - nextMapWidth - MIN_PANEL_WIDTH - RESIZE_HANDLE_WIDTH * 2));
+        return;
+      }
+
+      const chatStart = mapOpen ? mapWidth + RESIZE_HANDLE_WIDTH : 0;
+      const maxChatWidth = rect.width - chatStart - MIN_PANEL_WIDTH - RESIZE_HANDLE_WIDTH;
+      setChatWidth(clamp(moveEvent.clientX - rect.left - chatStart, MIN_PANEL_WIDTH, maxChatWidth));
+    };
+
+    const stopResize = () => {
+      document.body.classList.remove("resizing-panes");
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", stopResize);
+    };
+
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stopResize);
+  };
+
+  const workspaceStyle: CSSProperties = {
+    gridTemplateColumns: mapOpen
+      ? `${mapWidth}px ${RESIZE_HANDLE_WIDTH}px minmax(${MIN_PANEL_WIDTH}px, ${chatWidth}px) ${RESIZE_HANDLE_WIDTH}px minmax(${MIN_PANEL_WIDTH}px, 1fr)`
+      : `minmax(${MIN_PANEL_WIDTH}px, ${chatWidth}px) ${RESIZE_HANDLE_WIDTH}px minmax(${MIN_PANEL_WIDTH}px, 1fr)`
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -147,9 +193,15 @@ export default function App() {
         </div>
       </header>
 
-      <section className={mapOpen ? "workspace with-map" : "workspace"}>
-        {mapOpen && <ThreadMap data={data} onData={setData} />}
+      <section ref={workspaceRef} className={mapOpen ? "workspace with-map" : "workspace"} style={workspaceStyle}>
+        {mapOpen && (
+          <>
+            <ThreadMap data={data} onData={setData} />
+            <div className="resize-handle" role="separator" aria-label="Resize thread map" onPointerDown={startResize("map")} />
+          </>
+        )}
         <ChatPanel data={data} activeThread={activeThread} activeNotebook={activeNotebook} onData={setData} />
+        <div className="resize-handle" role="separator" aria-label="Resize AI chat and notebook" onPointerDown={startResize("chat")} />
         <NotebookPanel activeNotebook={activeNotebook} onData={setData} />
       </section>
 
@@ -209,4 +261,8 @@ export default function App() {
       )}
     </main>
   );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max));
 }

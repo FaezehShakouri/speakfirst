@@ -182,12 +182,33 @@ button:disabled {
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.95fr);
-  gap: 14px;
+  gap: 0;
 }
 
-.workspace.with-map {
-  grid-template-columns: 240px minmax(0, 1fr) minmax(360px, 0.95fr);
+.resize-handle {
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resize-handle::before {
+  content: "";
+  width: 1px;
+  height: 48px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.resize-handle:hover::before,
+.resizing-panes .resize-handle::before {
+  background: var(--accent-strong);
+}
+
+.resizing-panes {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .panel,
