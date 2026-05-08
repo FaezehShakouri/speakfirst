@@ -132,6 +132,10 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
     setSelectionAction(null);
   };
 
+  const openThread = async (id: string) => {
+    onData(await window.speakFirst.setActiveThread(id));
+  };
+
   return (
     <section ref={panelRef} className="panel chat-panel">
       <header className="panel-header">
@@ -167,7 +171,36 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
         {messages.map((message) => (
           <article key={message.id} className={`message ${message.role}`} data-message-id={message.id}>
             <div className="message-meta">{message.role === "assistant" ? "Tutor" : "You"}</div>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ href, children }) => {
+                  const threadId = href?.startsWith("#thread:") ? href.replace("#thread:", "") : "";
+                  if (threadId) {
+                    return (
+                      <button
+                        className="thread-inline-link"
+                        onClick={() => void openThread(threadId)}
+                        title="Open thread for this selection"
+                        type="button"
+                      >
+                        {children}
+                      </button>
+                    );
+                  }
+                  if (!href) {
+                    return <>{children}</>;
+                  }
+                  return (
+                    <a href={href} target="_blank" rel="noreferrer">
+                      {children}
+                    </a>
+                  );
+                }
+              }}
+            >
+              {linkThreadSelections(message.content, data.threads.filter((thread) => thread.sourceMessageId === message.id))}
+            </ReactMarkdown>
             {message.attachmentIds.map((attachmentId) => {
               const attachment = data.attachments.find((item) => item.id === attachmentId);
               return attachment ? <img className="message-image" key={attachment.id} src={attachment.dataUrl} alt={attachment.name} /> : null;
@@ -232,6 +265,45 @@ export default function ChatPanel({ data, activeThread, activeNotebook, onData }
       </form>
     </section>
   );
+}
+
+function linkThreadSelections(content: string, threads: ChatThread[]): string {
+  const ranges = threads
+    .map((thread) => {
+      const quote = thread.selectedQuote?.trim();
+      const start = quote ? content.indexOf(quote) : -1;
+      return quote && start >= 0 ? { start, end: start + quote.length, threadId: thread.id } : null;
+    })
+    .filter((range): range is { start: number; end: number; threadId: string } => Boolean(range))
+    .sort((a, b) => a.start - b.start);
+
+  const nonOverlapping = [];
+  let lastEnd = -1;
+  for (const range of ranges) {
+    if (range.start >= lastEnd) {
+      nonOverlapping.push(range);
+      lastEnd = range.end;
+    }
+  }
+
+  if (nonOverlapping.length === 0) {
+    return content;
+  }
+
+  let output = "";
+  let cursor = 0;
+  for (const range of nonOverlapping) {
+    output += content.slice(cursor, range.start);
+    const quote = content.slice(range.start, range.end).replace(/\s+/g, " ");
+    output += `[${escapeMarkdownLinkText(quote)}](#thread:${range.threadId})`;
+    cursor = range.end;
+  }
+  output += content.slice(cursor);
+  return output;
+}
+
+function escapeMarkdownLinkText(value: string): string {
+  return value.replace(/([\\[\]])/g, "\\$1");
 }
 
 function shortTitle(value: string): string {

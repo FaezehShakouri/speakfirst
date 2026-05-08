@@ -439,6 +439,24 @@ button:disabled {
   background: transparent;
 }
 
+.thread-inline-link {
+  min-height: 0;
+  display: inline;
+  padding: 1px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.thread-inline-link:hover {
+  background: var(--accent);
+  color: #06111f;
+}
+
 .selection-reply-button {
   position: absolute;
   z-index: 5;
