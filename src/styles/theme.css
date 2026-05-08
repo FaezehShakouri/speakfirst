@@ -120,7 +120,6 @@ button:disabled {
 .message-actions,
 .panel-actions,
 .field-row,
-.cards-box,
 .pending-attachments span {
   display: flex;
   align-items: center;
@@ -129,7 +128,6 @@ button:disabled {
 
 .brand span,
 .muted,
-.cards-box span,
 .breadcrumb {
   color: var(--muted);
   font-size: 13px;
@@ -145,7 +143,7 @@ button:disabled {
 .ghost-button,
 .panel-actions button,
 .message-actions button,
-.cards-box button {
+.card-actions button {
   min-height: 38px;
   padding: 0 12px;
 }
@@ -192,6 +190,11 @@ button:disabled {
   grid-template-rows: auto auto 1fr auto auto;
 }
 
+.notebook-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 .panel-header {
   padding: 16px;
   border-bottom: 1px solid var(--border);
@@ -199,6 +202,11 @@ button:disabled {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+}
+
+.panel-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .panel-header h2,
@@ -375,7 +383,6 @@ button:disabled {
 }
 
 .composer textarea,
-.markdown-editor,
 input,
 select {
   border: 1px solid var(--border);
@@ -392,71 +399,17 @@ select {
   padding: 12px;
 }
 
-.title-input {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  font-size: 18px;
-  font-weight: 800;
-  padding: 0;
-}
-
-.title-button {
-  display: block;
-  max-width: 320px;
+.srcbook-shell {
   min-height: 0;
-  margin: 2px 0 0;
-  padding: 0 4px 2px 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text);
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1.2;
-  text-align: left;
-}
-
-.title-button:hover {
-  color: var(--accent-strong);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.notebook-grid {
-  min-height: 0;
+  flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
-  border-bottom: 1px solid var(--border);
 }
 
-.markdown-editor {
+.srcbook-frame {
   width: 100%;
   height: 100%;
-  min-height: 0;
-  resize: none;
   border: 0;
-  border-right: 1px solid var(--border);
-  border-radius: 0;
-  padding: 16px;
-  line-height: 1.5;
-}
-
-.markdown-preview {
-  overflow: auto;
-  padding: 16px;
-  line-height: 1.55;
-}
-
-.cards-box {
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-}
-
-.cards-box > div {
-  display: grid;
+  background: var(--panel-solid);
 }
 
 .card-actions {
@@ -466,12 +419,14 @@ select {
 }
 
 .cards-list {
-  max-height: 220px;
+  max-height: 420px;
   overflow: auto;
   display: grid;
   gap: 10px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
+}
+
+.cards-list.in-modal {
+  max-height: 56vh;
 }
 
 .card-preview {
@@ -498,16 +453,8 @@ select {
   color: var(--muted);
 }
 
-.child-notes {
-  padding: 12px 16px 16px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.child-notes button {
-  min-height: 32px;
-  padding: 0 10px;
+.cards-modal {
+  width: min(760px, 100%);
 }
 
 .modal-backdrop {

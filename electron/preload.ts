@@ -23,7 +23,9 @@ const api: DesktopApi = {
     ipcRenderer.on("capture-from-shortcut", listener);
     return () => ipcRenderer.removeListener("capture-from-shortcut", listener);
   },
-  setAlwaysOnTop: (value: boolean) => ipcRenderer.invoke("set-always-on-top", value)
+  setAlwaysOnTop: (value: boolean) => ipcRenderer.invoke("set-always-on-top", value),
+  startSrcbookNotebook: () => ipcRenderer.invoke("start-srcbook-notebook"),
+  openSrcbookNotebook: () => ipcRenderer.invoke("open-srcbook-notebook")
 };
 
 contextBridge.exposeInMainWorld("speakFirst", api);

@@ -127,4 +127,6 @@ export interface DesktopApi {
   captureRegion(): Promise<CaptureResult | null>;
   onCaptureFromShortcut(callback: (result: CaptureResult | null) => void): () => void;
   setAlwaysOnTop(value: boolean): Promise<AppData>;
+  startSrcbookNotebook(): Promise<{ url: string }>;
+  openSrcbookNotebook(): Promise<{ url: string }>;
 }

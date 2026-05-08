@@ -1,9 +1,7 @@
-import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { Download, Eye, FilePlus2, NotebookTabs, SquareStack, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Download, ExternalLink, Loader2, RefreshCw, SquareStack, Trash2 } from "lucide-react";
 import type { AppData, Notebook } from "../types/app";
-import { createFlashcard, exportAnkiDeck } from "../services/anki";
+import { exportAnkiDeck } from "../services/anki";
 
 interface Props {
   data: AppData;
@@ -12,83 +10,39 @@ interface Props {
 }
 
 export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
-  const [selection, setSelection] = useState("");
   const [exportMessage, setExportMessage] = useState("");
   const [cardsOpen, setCardsOpen] = useState(false);
-  const [titleEditing, setTitleEditing] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(activeNotebook.title);
-  const titleInputRef = useRef<HTMLInputElement>(null);
-
-  const childNotes = useMemo(
-    () => data.notebooks.filter((notebook) => notebook.parentId === activeNotebook.id),
-    [activeNotebook.id, data.notebooks]
-  );
+  const [srcbookUrl, setSrcbookUrl] = useState("");
+  const [srcbookStatus, setSrcbookStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [srcbookError, setSrcbookError] = useState("");
 
   useEffect(() => {
-    setTitleDraft(activeNotebook.title);
-    setTitleEditing(false);
-  }, [activeNotebook.id, activeNotebook.title]);
+    void startSrcbook();
+  }, []);
 
-  useEffect(() => {
-    if (titleEditing) {
-      titleInputRef.current?.focus();
-      titleInputRef.current?.select();
-    }
-  }, [titleEditing]);
-
-  const updateNotebook = async (patch: Pick<Notebook, "title" | "content">) => {
-    onData(await window.speakFirst.updateNotebook(activeNotebook.id, patch));
-  };
-
-  const saveTitle = async () => {
-    const nextTitle = titleDraft.trim() || "Untitled notebook";
-    setTitleEditing(false);
-    if (nextTitle !== activeNotebook.title) {
-      await updateNotebook({ title: nextTitle, content: activeNotebook.content });
+  const startSrcbook = async () => {
+    setSrcbookStatus("loading");
+    setSrcbookError("");
+    try {
+      const result = await window.speakFirst.startSrcbookNotebook();
+      setSrcbookUrl(result.url);
+      setSrcbookStatus("ready");
+    } catch (error) {
+      setSrcbookStatus("error");
+      setSrcbookError(error instanceof Error ? error.message : "Unable to start Srcbook.");
     }
   };
 
-  const handleTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.currentTarget.blur();
+  const openSrcbook = async () => {
+    setSrcbookError("");
+    try {
+      const result = await window.speakFirst.openSrcbookNotebook();
+      setSrcbookUrl(result.url);
+      setSrcbookStatus("ready");
+    } catch (error) {
+      setSrcbookStatus("error");
+      setSrcbookError(error instanceof Error ? error.message : "Unable to open Srcbook.");
     }
-    if (event.key === "Escape") {
-      setTitleDraft(activeNotebook.title);
-      setTitleEditing(false);
-    }
-  };
-
-  const captureSelection = (target: HTMLTextAreaElement) => {
-    const selected = target.value.slice(target.selectionStart, target.selectionEnd).trim();
-    if (selected) {
-      setSelection(selected);
-    }
-  };
-
-  const createChildNotebook = async () => {
-    const quote = selection || "Nested note";
-    onData(
-      await window.speakFirst.createNotebook({
-        parentId: activeNotebook.id,
-        title: `Note: ${quote.slice(0, 38)}`,
-        selectedQuote: selection,
-        content: selection ? `> ${selection.replace(/\n/g, "\n> ")}\n\n` : ""
-      })
-    );
-    setSelection("");
-  };
-
-  const makeCard = async () => {
-    const front = selection || activeNotebook.title;
-    onData(
-      await createFlashcard({
-        front,
-        back: selection ? "Explain, translate, or complete this note." : activeNotebook.content.slice(0, 500),
-        sourceType: "notebook",
-        sourceId: activeNotebook.id
-      })
-    );
-    setSelection("");
   };
 
   const exportCards = async () => {
@@ -104,105 +58,86 @@ export default function NotebookPanel({ data, activeNotebook, onData }: Props) {
     <section className="panel notebook-panel">
       <header className="panel-header">
         <div>
-          <span className="eyebrow">Notebook</span>
-          {titleEditing ? (
-            <input
-              ref={titleInputRef}
-              className="title-input"
-              value={titleDraft}
-              onChange={(event) => setTitleDraft(event.target.value)}
-              onBlur={saveTitle}
-              onKeyDown={handleTitleKeyDown}
-            />
-          ) : (
-            <button className="title-button" onClick={() => setTitleEditing(true)} title="Rename notebook">
-              {activeNotebook.title}
-            </button>
-          )}
+          <span className="eyebrow">Srcbook notebook</span>
+          <h2>{activeNotebook.title}</h2>
+          <p className="muted">Notebook editing is handled by Srcbook.</p>
         </div>
         <div className="panel-actions">
-          <button onClick={createChildNotebook}>
-            <FilePlus2 size={15} />
-            Child note
+          <button onClick={() => void startSrcbook()}>
+            <RefreshCw size={15} />
+            Restart
           </button>
-          <button onClick={makeCard}>
+          <button onClick={() => void openSrcbook()}>
+            <ExternalLink size={15} />
+            Open
+          </button>
+          <button onClick={() => setCardsOpen(true)}>
             <SquareStack size={15} />
-            Card
+            Cards {data.flashcards.length > 0 ? `(${data.flashcards.length})` : ""}
           </button>
         </div>
       </header>
 
-      {activeNotebook.selectedQuote && (
-        <blockquote className="context-quote">
-          <NotebookTabs size={16} />
-          {activeNotebook.selectedQuote}
-        </blockquote>
-      )}
-
-      <div className="notebook-grid">
-        <textarea
-          className="markdown-editor"
-          value={activeNotebook.content}
-          onSelect={(event) => captureSelection(event.currentTarget)}
-          onChange={(event) => updateNotebook({ title: activeNotebook.title, content: event.target.value })}
-          placeholder="Write markdown notes here..."
-        />
-        <article className="markdown-preview">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{activeNotebook.content}</ReactMarkdown>
-        </article>
+      <div className="srcbook-shell">
+        {srcbookStatus === "loading" && (
+          <div className="empty-state">
+            <Loader2 className="spin" size={28} />
+            <strong>Starting Srcbook...</strong>
+            <span>SpeakFirst will use Srcbook for the notebook workspace.</span>
+          </div>
+        )}
+        {srcbookStatus === "error" && (
+          <div className="empty-state">
+            <strong>Srcbook could not start.</strong>
+            <span>{srcbookError}</span>
+            <button onClick={() => void startSrcbook()}>Try again</button>
+          </div>
+        )}
+        {srcbookStatus === "ready" && srcbookUrl && <iframe className="srcbook-frame" src={srcbookUrl} title="Srcbook notebook" />}
       </div>
 
-      <section className="cards-box">
-        <div>
-          <strong>{data.flashcards.length} flashcards</strong>
-          <span>Export as a TSV file that Anki can import.</span>
-        </div>
-        <div className="card-actions">
-          <button onClick={() => setCardsOpen((value) => !value)}>
-            <Eye size={15} />
-            {cardsOpen ? "Hide cards" : "See cards"}
-          </button>
-          <button onClick={exportCards}>
-            <Download size={15} />
-            Export
-          </button>
-        </div>
-      </section>
-      {exportMessage && <p className="muted">{exportMessage}</p>}
-
       {cardsOpen && (
-        <section className="cards-list">
-          {data.flashcards.length === 0 ? (
-            <p className="muted">No cards yet. Select chat or notebook text and use the Card button.</p>
-          ) : (
-            data.flashcards.map((card) => (
-              <article key={card.id} className="card-preview">
-                <div>
-                  <span className="eyebrow">Front</span>
-                  <p>{card.front}</p>
-                </div>
-                <div>
-                  <span className="eyebrow">Back</span>
-                  <p>{card.back}</p>
-                </div>
-                <button className="danger-button" onClick={() => deleteCard(card.id)} title="Delete card">
-                  <Trash2 size={14} />
+        <div className="modal-backdrop" role="presentation">
+          <section className="modal-card cards-modal" role="dialog" aria-modal="true" aria-label="Flashcards">
+            <header>
+              <div>
+                <span className="eyebrow">Flashcards</span>
+                <h2>{data.flashcards.length} cards</h2>
+              </div>
+              <div className="card-actions">
+                <button onClick={exportCards}>
+                  <Download size={15} />
+                  Export
                 </button>
-              </article>
-            ))
-          )}
-        </section>
-      )}
-
-      {childNotes.length > 0 && (
-        <section className="child-notes">
-          <span className="eyebrow">Nested notes</span>
-          {childNotes.map((note) => (
-            <button key={note.id} onClick={async () => onData(await window.speakFirst.setActiveNotebook(note.id))}>
-              {note.title}
-            </button>
-          ))}
-        </section>
+                <button className="ghost-button" onClick={() => setCardsOpen(false)}>
+                  Close
+                </button>
+              </div>
+            </header>
+            {exportMessage && <p className="muted">{exportMessage}</p>}
+            <section className="cards-list in-modal">
+              {data.flashcards.length === 0 ? (
+                <p className="muted">No cards yet. Select chat or notebook text and use the Card button.</p>
+              ) : (
+                data.flashcards.map((card) => (
+                  <article key={card.id} className="card-preview">
+                    <div>
+                      <span className="eyebrow">Front</span>
+                      <p>{card.front}</p>
+                    </div>
+                    <div>
+                      <span className="eyebrow">Back</span>
+                      <p>{card.back}</p>
+                    </div>
+                    <button className="danger-button" onClick={() => deleteCard(card.id)} title="Delete card">
+                      <Trash2 size={14} />
+                    </button>
+                  </article>
+                ))
+              )}
+            </section>
+          </section>
+        </div>
       )}
     </section>
   );
